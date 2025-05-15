@@ -3,9 +3,18 @@ from flask_cors import CORS
 import pymysql
 import time
 import traceback
+from dotenv import load_dotenv
+import os
+
+
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins=["https://staging4.bitcoiners.africa"])  # allow your frontend origin
+CORS(app, origins=["https://staging4.bitcoiners.africa"]) 
+
+ASSISTANT_API_KEY = os.getenv('ASSISTANT_API_KEY')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# allow your frontend origin
 
 # DB credentials from env or hardcode for now
 DB_HOST = "127.0.0.1"
