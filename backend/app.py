@@ -14,7 +14,7 @@ load_dotenv()
 
 # Flask setup
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://staging4.bitcoiners.africa"]) 
 
 # OpenAI setup
 openai.api_key = os.getenv("OPENAI_API_KEY")
