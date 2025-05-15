@@ -1,3 +1,4 @@
+pymysql
 mysql-connector-python
 flask
 flask-cors
