@@ -1,3 +1,4 @@
+python-dotenv
 pymysql
 mysql-connector-python
 flask
