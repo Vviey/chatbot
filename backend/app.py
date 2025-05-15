@@ -5,14 +5,15 @@ import openai
 import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__)
 
-# Configure CORS to allow all origins
-CORS(app, 
-     resources={r"/*": {"origins": "*"}},  # Allow all origins for all routes
+# Configure CORS to allow requests from your frontend domain
+CORS(app,
+     resources={r"/*": {"origins": ["https://staging4.bitcoiners.africa"]}},
      supports_credentials=True,
      allow_headers=["Content-Type", "Authorization", "Origin"],
      methods=["GET", "POST", "OPTIONS"])
@@ -28,10 +29,11 @@ def health_check():
 @app.route('/api/chat', methods=['OPTIONS'])
 def options():
     response = jsonify({'status': 'ok'})
-    response.headers.add('Access-Control-Allow-Origin', '*')  # Allow all origins
+    response.headers.add('Access-Control-Allow-Origin', 'https://staging4.bitcoiners.africa')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin')
     response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
     response.headers.add('Access-Control-Max-Age', '3600')
+    response.headers.add('Vary', 'Origin')
     return response
 
 @app.route('/api/chat', methods=['POST'])
@@ -86,6 +88,8 @@ def chat_handler():
 
         # Add CORS headers to the response
         response = jsonify({"reply": bot_reply})
+        response.headers.add("Access-Control-Allow-Origin", "https://staging4.bitcoiners.africa")
+        response.headers.add("Vary", "Origin")
         return response
 
     except Exception as e:
