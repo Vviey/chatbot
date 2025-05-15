@@ -1,68 +1,47 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import openai
 import os
-
-# Read API key from Render environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import pymysql
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-# Enable CORS for staging & production
-CORS(app, origins=[
-    "https://bitcoiners.africa",
-    "https://staging4.bitcoiners.africa"
-])
+# Load DB config from environment variables (already set in Render)
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+DB_PORT = int(os.getenv("DB_PORT", 3306))
 
-# Session management
-session_threads = {}
+def get_db_connection():
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        port=DB_PORT,
+        charset='utf8mb4',
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Chatbot backend is live."
-
-@app.route("/api/chat", methods=["POST"])
-def chat():
+@app.route('/test-db', methods=['GET'])
+def test_db_insert():
     try:
-        data = request.get_json()
-        user_message = data.get("message")
-        user_id = data.get("user_id")
-
-        if not user_message or not user_id:
-            return jsonify({"error": "Missing message or user_id"}), 400
-
-        thread_id = session_threads.get(user_id)
-        if not thread_id:
-            thread = openai.beta.threads.create()
-            thread_id = thread.id
-            session_threads[user_id] = thread_id
-
-        openai.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=user_message
-        )
-
-        run = openai.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=os.getenv("OPENAI_ASSISTANT_ID")
-        )
-
-        while True:
-            status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-            if status.status == "completed":
-                break
-            elif status.status == "failed":
-                return jsonify({"error": "Run failed"}), 500
-
-        messages = openai.beta.threads.messages.list(thread_id=thread_id)
-        bot_reply = next((msg.content[0].text.value for msg in messages.data if msg.role == "assistant"), None)
-
-        return jsonify({"reply": bot_reply})
-
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            sql = """
+                INSERT INTO wp_ai_chatbot (user_id, session_id, user_input, ai_response)
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(sql, (
+                'fake-user-id-123',
+                'fake-session-id-abc',
+                'Test user input',
+                'Test AI response'
+            ))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": "Test data inserted into DB"})
     except Exception as e:
-        print("Chatbot error:", e)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"status": "error", "error": str(e)}), 500
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
