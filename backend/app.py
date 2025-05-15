@@ -1,10 +1,8 @@
-import os
+from flask import Flask, request, jsonify
 import pymysql
-from flask import Flask, jsonify
+import os
 
-app = Flask(__name__)
 
-# Load DB config from environment variables (already set in Render)
 DB_HOST = os.getenv("DB_HOST")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
@@ -22,28 +20,26 @@ def get_db_connection():
         cursorclass=pymysql.cursors.DictCursor
     )
 
-@app.route('/test-db', methods=['GET'])
-def test_db_insert():
+
+@app.route('/api/chat', methods=['POST'])
+def insert_chat():
     try:
+        data = request.get_json()
         conn = get_db_connection()
         with conn.cursor() as cursor:
             sql = """
-                INSERT INTO wp_ai_chatbot (user_id, session_id, user_input, ai_response)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO wp_ai_chatbot (
+                    user_id, session_id, user_input, ai_response, ip_address
+                ) VALUES (%s, %s, %s, %s, %s)
             """
             cursor.execute(sql, (
-                'fake-user-id-123',
-                'fake-session-id-abc',
-                'Test user input',
-                'Test AI response'
+                str(data.get("user_id", "0")),
+                data.get("session_id", "unknown"),
+                data.get("user_input", ""),
+                data.get("ai_response", ""),
+                data.get("ip_address", "")
             ))
         conn.commit()
-        conn.close()
-        return jsonify({"status": "success", "message": "Test data inserted into DB"})
+        return jsonify({"status": "success", "message": "Data inserted"}), 200
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
-
