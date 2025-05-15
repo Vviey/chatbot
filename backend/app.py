@@ -2,20 +2,24 @@
 
 import time
 import uuid
-from flask import Flask, request, jsonify
 import openai
 import mysql.connector
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 
+# Load .env variables
 load_dotenv()
 
+# Flask setup
 app = Flask(__name__)
+CORS(app)
 
-# OpenAI Key
+# OpenAI setup
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# DB Config
+# MySQL DB setup
 db_config = {
     "host": os.getenv("DB_HOST"),
     "user": os.getenv("DB_USER"),
@@ -27,13 +31,13 @@ db_config = {
 def get_db_connection():
     return mysql.connector.connect(**db_config)
 
-@app.route('/api/chat', methods=['POST'])
+@app.route("/api/chat", methods=["POST"])
 def chat():
-    data = request.json
-    user_input = data.get('message', '')
-    session_id = data.get('session_id', str(uuid.uuid4()))
-    user_id = data.get('user_id', 'anonymous')
-    ip_address = request.remote_addr or 'unknown'
+    data = request.get_json()
+    user_input = data.get("message", "").strip()
+    session_id = data.get("session_id", str(uuid.uuid4()))
+    user_id = data.get("user_id", "anonymous")
+    ip_address = request.remote_addr or "unknown"
 
     if not user_input:
         return jsonify({"error": "No message provided"}), 400
@@ -41,7 +45,6 @@ def chat():
     start_time = time.time()
 
     try:
-        # AI response
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -49,13 +52,12 @@ def chat():
                 {"role": "user", "content": user_input}
             ]
         )
-        ai_response = response['choices'][0]['message']['content']
+        ai_response = response["choices"][0]["message"]["content"]
+        response_time = round(time.time() - start_time, 2)
     except Exception as e:
-        return jsonify({"error": f"AI error: {str(e)}"}), 500
+        return jsonify({"error": f"OpenAI Error: {str(e)}"}), 500
 
-    response_time = round(time.time() - start_time, 2)
-
-    # Save to MySQL
+    # Save chat to WordPress DB
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -74,8 +76,8 @@ def chat():
         conn.commit()
         cursor.close()
         conn.close()
-    except mysql.connector.Error as err:
-        return jsonify({"error": f"MySQL error: {str(err)}"}), 500
+    except mysql.connector.Error as db_err:
+        return jsonify({"error": f"MySQL Error: {str(db_err)}"}), 500
 
     return jsonify({
         "session_id": session_id,
@@ -84,5 +86,5 @@ def chat():
         "response_time": response_time
     })
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
