@@ -10,14 +10,12 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__)
 
-# Properly configure CORS
-CORS(app, resources={
-    r"/api/*": {
-        "origins": ["https://staging4.bitcoiners.africa", "https://bitcoiners.africa"],
-        "methods": ["POST", "GET", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Origin", "Accept"]
-    }
-})
+# Fix 1: Configure CORS correctly
+CORS(app, 
+     resources={r"/api/*": {"origins": ["https://staging4.bitcoiners.africa", "https://bitcoiners.africa"]}},
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization", "Origin"],
+     methods=["GET", "POST", "OPTIONS"])
 
 # In-memory session storage
 session_threads = {}
@@ -26,15 +24,15 @@ session_threads = {}
 def health_check():
     return "Bitcoin Sidekick API - Operational"
 
-# Add explicit OPTIONS handling for preflight requests
+# Fix 2: Add explicit OPTIONS handler
 @app.route('/api/chat', methods=['OPTIONS'])
-def options_handler():
-    response = jsonify({"status": "OK"})
-    # Add CORS headers manually for preflight
-    response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
-    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Origin")
-    response.headers.add("Access-Control-Max-Age", "3600")
+def options():
+    response = jsonify({'status': 'ok'})
+    response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin')
+    response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Max-Age', '3600')
     return response
 
 @app.route('/api/chat', methods=['POST'])
@@ -45,10 +43,7 @@ def chat_handler():
         user_id = data.get('user_id')
 
         if not user_message or not user_id:
-            response = jsonify({"error": "Message and user_id required"})
-            # Add CORS headers to error responses as well
-            response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
-            return response, 400
+            return jsonify({"error": "Message and user_id required"}), 400
 
         # Get or create thread
         thread_id = session_threads.get(user_id)
@@ -79,10 +74,7 @@ def chat_handler():
             if status.status == "completed":
                 break
             if status.status in ["failed", "cancelled"]:
-                response = jsonify({"error": "Processing failed"})
-                # Add CORS headers to error responses
-                response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
-                return response, 500
+                return jsonify({"error": "Processing failed"}), 500
 
         # Get response
         messages = openai.beta.threads.messages.list(thread_id=thread_id)
@@ -93,16 +85,12 @@ def chat_handler():
             "Could not generate response"
         )
 
+        # Fix 3: Ensure CORS headers are also on the success response
         response = jsonify({"reply": bot_reply})
-        # Add CORS headers to success responses as well
-        response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
         return response
 
     except Exception as e:
-        response = jsonify({"error": str(e)})
-        # Add CORS headers to exception responses
-        response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
-        return response, 500
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
