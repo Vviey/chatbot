@@ -1,90 +1,63 @@
-# backend/app.py
-
-import time
-import uuid
-import openai
-import mysql.connector
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
-from dotenv import load_dotenv
+import pymysql
+import time
+import traceback
 
-# Load .env variables
-load_dotenv()
-
-# Flask setup
 app = Flask(__name__)
-CORS(app, origins=["https://staging4.bitcoiners.africa"]) 
+CORS(app, origins=["https://staging4.bitcoiners.africa"])  # allow your frontend origin
 
-# OpenAI setup
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# MySQL DB setup
-db_config = {
-    "host": os.getenv("DB_HOST"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "database": os.getenv("DB_NAME"),
-    "port": int(os.getenv("DB_PORT", 3306))
-}
+# DB credentials from env or hardcode for now
+DB_HOST = "127.0.0.1"
+DB_USER = "u450724067_iX9ab"
+DB_PASSWORD = "IxGLaj3MJp"
+DB_NAME = "u450724067_oZCJ5"
+DB_PORT = 3306
 
 def get_db_connection():
-    return mysql.connector.connect(**db_config)
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        port=DB_PORT,
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
-    user_input = data.get("message", "").strip()
-    session_id = data.get("session_id", str(uuid.uuid4()))
-    user_id = data.get("user_id", "anonymous")
-    ip_address = request.remote_addr or "unknown"
-
-    if not user_input:
-        return jsonify({"error": "No message provided"}), 400
-
     start_time = time.time()
-
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful Bitcoin assistant for Africans."},
-                {"role": "user", "content": user_input}
-            ]
-        )
-        ai_response = response["choices"][0]["message"]["content"]
-        response_time = round(time.time() - start_time, 2)
+        data = request.json
+        user_input = data.get("message", "")
+        user_id = data.get("user_id", "anonymous")  # fallback if none
+        session_id = data.get("session_id", "default_session")
+
+        # Here you call your AI/chat logic, example dummy reply
+        ai_response = "This is a dummy response to: " + user_input
+        ai_response_links = ""  # could parse or generate links if you want
+
+        response_time = time.time() - start_time
+
+        # Save chat interaction to DB
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            sql = """
+                INSERT INTO wp_ai_chatbot (user_id, session_id, user_input, ai_response, ai_response_links, ip_address, response_time)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            ip_address = request.remote_addr or ""
+            cursor.execute(sql, (user_id, session_id, user_input, ai_response, ai_response_links, ip_address, response_time))
+            connection.commit()
+
+        return jsonify({
+            "response": ai_response,
+            "links": ai_response_links
+        })
     except Exception as e:
-        return jsonify({"error": f"OpenAI Error: {str(e)}"}), 500
+        traceback.print_exc()
+        return jsonify({"error": "Internal Server Error"}), 500
 
-    # Save chat to WordPress DB
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        sql = """
-            INSERT INTO wp_ai_chatbot (user_id, session_id, user_input, ai_response, ip_address, response_time)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(sql, (
-            user_id,
-            session_id,
-            user_input,
-            ai_response,
-            ip_address,
-            response_time
-        ))
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except mysql.connector.Error as db_err:
-        return jsonify({"error": f"MySQL Error: {str(db_err)}"}), 500
-
-    return jsonify({
-        "session_id": session_id,
-        "user_id": user_id,
-        "response": ai_response,
-        "response_time": response_time
-    })
 
 if __name__ == "__main__":
     app.run(debug=True)
