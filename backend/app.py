@@ -1,34 +1,28 @@
+import os
+import time
+import pymysql
+import openai
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from dotenv import load_dotenv
-import os
-import pymysql
-import time
-import traceback
-import openai
 
-# Load environment variables from .env file
-load_dotenv()
+# Set API Key from environment (Render)
+openai.api_key = os.getenv("OPENAI_API_KEY")
+ASSISTANT_ID = os.getenv("ASSISTANT_API_KEY")
 
-# Flask app setup
+# Database credentials (set in Render environment variables)
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+DB_PORT = int(os.getenv("DB_PORT", 3306))
+
+# Flask setup
 app = Flask(__name__)
-CORS(app, origins=["https://staging4.bitcoiners.africa"])
+CORS(app, origins=["https://bitcoiners.africa"])
 
-# Environment variables
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-ASSISTANT_API_KEY = os.getenv('ASSISTANT_API_KEY')  # Optional if you use assistant ID
+# Simple memory-based session tracking (replace with Redis later if needed)
+session_threads = {}
 
-# OpenAI setup
-openai.api_key = OPENAI_API_KEY
-
-# Database config
-DB_HOST = "127.0.0.1"
-DB_USER = "u450724067_iX9ab"
-DB_PASSWORD = "IxGLaj3MJp"
-DB_NAME = "u450724067_oZCJ5"
-DB_PORT = 3306
-
-# Establish DB connection
 def get_db_connection():
     return pymysql.connect(
         host=DB_HOST,
@@ -39,61 +33,80 @@ def get_db_connection():
         cursorclass=pymysql.cursors.DictCursor
     )
 
-# Chat route
+@app.route("/", methods=["GET"])
+def home():
+    return "Am alive!!"
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     start_time = time.time()
-    try:
-        data = request.json
-        user_input = data.get("message", "")
-        user_id = data.get("user_id", "anonymous")
-        session_id = data.get("session_id", "default_session")
 
-        # Call OpenAI API
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": user_input}
-            ],
-            temperature=0.7,
-            max_tokens=500
+    try:
+        data = request.get_json()
+        user_message = data.get("message")
+        user_id = data.get("user_id", "anonymous")  # fallback
+        session_id = data.get("session_id", "default_session")
+        ip_address = request.remote_addr or ""
+
+        if not user_message:
+            return jsonify({"error": "Missing user message"}), 400
+
+        # Get or create thread for user
+        thread_id = session_threads.get(user_id)
+        if not thread_id:
+            thread = openai.beta.threads.create()
+            thread_id = thread.id
+            session_threads[user_id] = thread_id
+
+        # Add user message
+        openai.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=user_message
         )
 
-        # Extract AI response
-        ai_response = response['choices'][0]['message']['content'].strip()
-        ai_response_links = ""  # Optional: add link extraction or enrichment here
+        # Start run
+        run = openai.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=ASSISTANT_ID
+        )
+
+        # Wait for response
+        while True:
+            status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            if status.status == "completed":
+                break
+            elif status.status == "failed":
+                return jsonify({"error": "Assistant run failed"}), 500
+
+        # Fetch reply
+        messages = openai.beta.threads.messages.list(thread_id=thread_id)
+        bot_reply = next((msg.content[0].text.value for msg in messages.data if msg.role == "assistant"), None)
+
         response_time = time.time() - start_time
 
-        # Log to DB
+        # Save to DB
         connection = get_db_connection()
         with connection.cursor() as cursor:
             sql = """
-                INSERT INTO wp_ai_chatbot 
-                (user_id, session_id, user_input, ai_response, ai_response_links, ip_address, response_time)
+                INSERT INTO wp_ai_chatbot (user_id, session_id, user_input, ai_response, ai_response_links, ip_address, response_time)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
-            ip_address = request.remote_addr or ""
             cursor.execute(sql, (
                 user_id,
                 session_id,
-                user_input,
-                ai_response,
-                ai_response_links,
+                user_message,
+                bot_reply,
+                "",  # ai_response_links (optional)
                 ip_address,
                 response_time
             ))
             connection.commit()
 
-        return jsonify({
-            "response": ai_response,
-            "links": ai_response_links
-        })
+        return jsonify({"reply": bot_reply})
 
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"error": str(e)}), 500
 
-# Run app
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5000)
