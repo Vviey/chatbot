@@ -18,7 +18,7 @@ DB_PORT = int(os.getenv("DB_PORT", 3306))
 
 # Flask setup
 app = Flask(__name__)
-CORS(app, origins=["https://bitcoiners.africa"])
+CORS(app, origins=["https://staging4.bitcoiners.africa"])
 
 # Simple memory-based session tracking (replace with Redis later if needed)
 session_threads = {}
