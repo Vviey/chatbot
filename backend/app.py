@@ -10,9 +10,9 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__)
 
-# Fix 1: Configure CORS correctly
+# Configure CORS to allow all origins
 CORS(app, 
-     resources={r"/api/*": {"origins": ["https://staging4.bitcoiners.africa", "https://bitcoiners.africa"]}},
+     resources={r"/*": {"origins": "*"}},  # Allow all origins for all routes
      supports_credentials=True,
      allow_headers=["Content-Type", "Authorization", "Origin"],
      methods=["GET", "POST", "OPTIONS"])
@@ -24,14 +24,13 @@ session_threads = {}
 def health_check():
     return "Bitcoin Sidekick API - Operational"
 
-# Fix 2: Add explicit OPTIONS handler
+# Explicit OPTIONS handler for preflight requests
 @app.route('/api/chat', methods=['OPTIONS'])
 def options():
     response = jsonify({'status': 'ok'})
-    response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+    response.headers.add('Access-Control-Allow-Origin', '*')  # Allow all origins
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin')
     response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
     response.headers.add('Access-Control-Max-Age', '3600')
     return response
 
@@ -85,7 +84,7 @@ def chat_handler():
             "Could not generate response"
         )
 
-        # Fix 3: Ensure CORS headers are also on the success response
+        # Add CORS headers to the response
         response = jsonify({"reply": bot_reply})
         return response
 
