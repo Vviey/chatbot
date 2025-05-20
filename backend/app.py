@@ -4,6 +4,7 @@ from flask_cors import CORS
 import openai
 import os
 from dotenv import load_dotenv
+import re  # Add regex support
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -13,6 +14,10 @@ CORS(app, origins=["https://staging4.bitcoiners.africa", "https://bitcoiners.afr
 
 # In-memory store (you can use Redis or SQLite later)
 session_threads = {}
+
+def clean_bot_response(text):
+    # Remove OpenAI citation markers like  
+    return re.sub(r'【\d+:\d+†source】', '', text).strip()
 
 @app.route('/', methods=['GET'])
 def home():
@@ -59,7 +64,10 @@ def chat():
         messages = openai.beta.threads.messages.list(thread_id=thread_id)
         bot_reply = next((msg.content[0].text.value for msg in messages.data if msg.role == "assistant"), None)
 
-        return jsonify({"reply": bot_reply})
+        # Clean reply
+        cleaned_reply = clean_bot_response(bot_reply) if bot_reply else None
+
+        return jsonify({"reply": cleaned_reply})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
