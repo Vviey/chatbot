@@ -9,7 +9,7 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__)
-CORS(app, origins=["https://staging4.bitcoiners.africa"])
+CORS(app, origins=["https://staging4.bitcoiners.africa", "https://bitcoiners.africa"])
 
 # In-memory store (you can use Redis or SQLite later)
 session_threads = {}
